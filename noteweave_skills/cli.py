@@ -208,13 +208,14 @@ _INSTALLERS = {
 # ---------------------------------------------------------------------------
 
 def _detect_ide(project_root: Path) -> str | None:
-    if (project_root / ".cursor").exists():
+    """Detect IDE from unambiguous project-level markers only."""
+    if (project_root / ".cursor").is_dir():
         return "cursor"
-    if (project_root / "CLAUDE.md").exists() or shutil.which("claude"):
-        return "claude-code"
     if (project_root / ".windsurfrules").exists():
         return "windsurf"
-    if (project_root / ".zed").exists():
+    if (project_root / "CLAUDE.md").exists():
+        return "claude-code"
+    if (project_root / ".zed").is_dir():
         return "zed"
     return None
 
@@ -232,27 +233,33 @@ def main() -> None:
     print(f"  Installing into: {_bold(str(project_root))}")
     print()
 
-    # Auto-detect
+    # Always ask — detection only sets the default hint
     detected = _detect_ide(project_root)
-    ide_key: str
-
+    detected_num = None
     if detected:
-        ide_name = next(n for _, (n, k) in _IDES.items() if k == detected)
-        print(f"  Detected IDE: {_bold(ide_name)}")
-        confirm = _ask(f"  Install skills for {ide_name}? [y/n]: ", ["y", "n", "Y", "N"]).lower()
-        if confirm == "y":
-            ide_key = detected
-        else:
-            detected = None  # fall through to manual selection
+        detected_num = next(n for n, (_, k) in _IDES.items() if k == detected)
 
-    if not detected:
-        print("  Which IDE are you using?")
-        print()
-        for num, (name, _) in _IDES.items():
-            print(f"    {_bold(num)}) {name}")
-        print()
-        choice = _ask("  Enter number: ", list(_IDES.keys()))
-        ide_key = _IDES[choice][1]
+    print("  Which IDE are you using?")
+    print()
+    for num, (name, _) in _IDES.items():
+        hint = f"  {_yellow('← detected')}" if num == detected_num else ""
+        print(f"    {_bold(num)}) {name}{hint}")
+    print()
+
+    prompt = f"  Enter number [{detected_num}]: " if detected_num else "  Enter number: "
+    raw = input(prompt).strip()
+    if not raw and detected_num:
+        choice = detected_num
+    elif raw in _IDES:
+        choice = raw
+    else:
+        while raw not in _IDES:
+            raw = input(f"  Please enter one of {', '.join(_IDES.keys())}: ").strip()
+            if not raw and detected_num:
+                raw = detected_num
+        choice = raw
+
+    ide_key = _IDES[choice][1]
 
     print()
     print(f"  Installing skills...")
