@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noteweave-skills"
-version = "0.1.0"
+version = "0.1.1"
 description = "Install Noteweave research API skills into Cursor, Claude Code, Windsurf, Zed, and other AI coding agents."
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,7 +24,7 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://noteweave.io"
-Repository = "https://github.com/noteweave/noteweave-skills"
+Repository = "https://github.com/Sj0605-DataSci/noteweave-skills"
 Documentation = "https://noteweave.io/docs/skills"
 
 [project.scripts]
