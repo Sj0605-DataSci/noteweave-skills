@@ -13,7 +13,10 @@ import shutil
 import sys
 from pathlib import Path
 
+from noteweave_skills import __version__
+
 TEMPLATES = Path(__file__).parent / "templates"
+_STAMP_FILE = ".noteweave-skills"  # written at project root after each install
 
 # IDE options shown in the menu
 _IDES = {
@@ -204,6 +207,55 @@ _INSTALLERS = {
 
 
 # ---------------------------------------------------------------------------
+# Version stamp helpers
+# ---------------------------------------------------------------------------
+
+def _read_stamp(project_root: Path) -> str | None:
+    """Return the version string from the stamp file, or None if absent."""
+    stamp = project_root / _STAMP_FILE
+    try:
+        return stamp.read_text().strip() if stamp.exists() else None
+    except Exception:
+        return None
+
+
+def _write_stamp(project_root: Path) -> None:
+    """Write current version to the stamp file."""
+    try:
+        (project_root / _STAMP_FILE).write_text(__version__ + "\n")
+    except Exception:
+        pass
+
+
+def _check_stamp(project_root: Path) -> bool:
+    """
+    If a stamp exists and is outdated, warn the user and ask if they want
+    to re-run the installer to update skills. Returns True if install should
+    proceed (either no stamp, stamp matches, or user chose to update).
+    """
+    installed = _read_stamp(project_root)
+    if installed is None:
+        return True  # first time — no stamp yet
+    if installed == __version__:
+        print(f"  {_green('✓')} Skills already up to date (v{__version__}).")
+        confirm = _ask(
+            "  Re-install / overwrite existing skills? [y/n]: ",
+            ["y", "n", "Y", "N"],
+        ).lower()
+        return confirm == "y"
+    # Outdated stamp
+    print(
+        f"  {_yellow('!')} Skills were installed at v{installed}, "
+        f"package is now v{__version__}."
+    )
+    confirm = _ask(
+        "  Update skills to the latest version? [y/n]: ",
+        ["y", "n", "Y", "N"],
+    ).lower()
+    return confirm == "y"
+
+
+# ---------------------------------------------------------------------------
 # Auto-detect IDE
 # ---------------------------------------------------------------------------
 
@@ -231,6 +283,16 @@ def main() -> None:
     print(_bold(_cyan("  Noteweave Skills Installer")))
     print(_cyan("  ─────────────────────────────────────────"))
     print(f"  Installing into: {_bold(str(project_root))}")
+    print(f"  Package version: {_bold('v' + __version__)}")
+    print()
+
+    # Check stamp — warn if skills were installed with an older version
+    if not _check_stamp(project_root):
+        print()
+        print("  Skipped. Run again any time to update.")
+        print()
+        return
+
     print()
 
     # Always ask — detection only sets the default hint
@@ -267,6 +329,9 @@ def main() -> None:
 
     _INSTALLERS[ide_key](project_root)
 
+    # Write version stamp so future runs can detect outdated skills
+    _write_stamp(project_root)
+
     # Token reminder
     print()
     print(_cyan("  ─────────────────────────────────────────"))
@@ -277,6 +342,10 @@ def main() -> None:
     print("     or add to   .env:  NOTEWEAVE_TOKEN=nw_ext_...")
     print()
     print(f"  {_green('Done!')} Your AI agent now knows how to use the Noteweave research API.")
+    print()
+    print(f"  {_yellow('Tip:')} Add {_bold('.noteweave-skills')} to your .gitignore")
+    print(f"       After {_bold('pip install --upgrade noteweave-skills')}, re-run this command")
+    print(f"       to update your skill files — it will detect the version change automatically.")
     print()
 
 
