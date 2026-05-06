@@ -35,6 +35,17 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
     "per_provider": 10,
     "sort": "top_cited"
   }'
+
+# Conference-filtered: S2 runs first, then other providers in parallel
+curl -s -X POST https://api.noteweave.io/research/search_papers \
+  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "diffusion models image generation",
+    "pill": "artificial_intelligence",
+    "venue": "NeurIPS",
+    "year_from": 2022
+  }'
 ```
 
 **Request fields:**
@@ -44,8 +55,13 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
 - `year_from` / `year_to` — integer year bounds (optional)
 - `sort` — `relevance` | `latest` | `top_cited` | `new`
 - `providers` — comma-separated whitelist e.g. `"arxiv,s2,openalex"` (optional)
+- `venue` — conference or journal name e.g. `"NeurIPS"`, `"CVPR 2023"`, `"Nature Medicine"` (optional). When set, Semantic Scholar runs first with a boosted result cap for stronger venue-biased results.
 
-**Response:** `{ "papers": [{title, authors, year, abstract, arxiv_id, doi, url, pdf_url, source, citation_count}], "total": N }`
+**Response:** `{ "papers": [{title, authors, year, abstract, arxiv_id, doi, url, pdf_url, source, citation_count, venue, rank}], "total": N, "providers": {"s2": 8, "arxiv": 5} }`
+
+- `rank` — 1-based relevance rank from GPT-5-nano reranker (lower = more relevant)
+- `venue` — journal or conference name; `null` for pure arXiv preprints
+- `providers` — count of papers per source (useful to see coverage)
 
 ---
 

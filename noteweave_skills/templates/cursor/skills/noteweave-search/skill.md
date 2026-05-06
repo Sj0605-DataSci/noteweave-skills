@@ -1,6 +1,6 @@
 ---
 name: noteweave-search
-description: Search academic papers across arXiv, Semantic Scholar, OpenAlex, PubMed, bioRxiv and more. Use when the user asks to find papers, search literature, look up research, find related work, or explore a research topic.
+description: Search academic papers across arXiv, Semantic Scholar, OpenAlex, PubMed, bioRxiv and more. Use when the user asks to find papers, search literature, look up research, find related work, explore a research topic, or find papers from a specific conference or journal.
 ---
 
 # Noteweave Paper & Dataset Search
@@ -19,7 +19,7 @@ Base URL: `https://api.noteweave.io`
 
 **POST** `/research/search_papers`
 
-Search across 12 academic providers simultaneously. Results are fusion-searched, deduplicated, and reranked.
+Search across 12 academic providers simultaneously. Results are fusion-searched, deduplicated, and reranked by GPT-5-nano relevance scoring.
 
 ### Request body
 ```json
@@ -30,7 +30,8 @@ Search across 12 academic providers simultaneously. Results are fusion-searched,
   "year_from": "integer (optional)",
   "year_to": "integer (optional)",
   "sort": "relevance | latest | top_cited | new — default: relevance",
-  "providers": "comma-separated whitelist e.g. 'arxiv,s2,openalex' — omit for all"
+  "providers": "comma-separated whitelist e.g. 'arxiv,s2,openalex' — omit for all",
+  "venue": "string (optional) — conference or journal name e.g. 'NeurIPS', 'CVPR 2023', 'Nature Medicine'. When set, Semantic Scholar runs first with a boosted result cap."
 }
 ```
 
@@ -48,14 +49,20 @@ Search across 12 academic providers simultaneously. Results are fusion-searched,
       "url": "string or null",
       "pdf_url": "string or null",
       "source": "arxiv | s2 | openalex | pubmed | biorxiv | medrxiv | ...",
-      "citation_count": 0
+      "citation_count": 0,
+      "venue": "string or null — journal or conference name (null for arXiv preprints)",
+      "rank": 1
     }
   ],
-  "total": 42
+  "total": 42,
+  "providers": {"s2": 8, "openalex": 6, "arxiv": 5}
 }
 ```
 
-### Example
+`rank` is 1-based — lower = more relevant (assigned by GPT-5-nano reranker).
+`providers` shows how many papers came from each source.
+
+### Example — general search
 ```bash
 curl -s -X POST https://api.noteweave.io/research/search_papers \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
@@ -65,13 +72,27 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
     "pill": "artificial_intelligence",
     "per_provider": 10,
     "sort": "top_cited"
-  }' | jq '.papers[] | {title, year, arxiv_id, citation_count}'
+  }' | jq '.papers[] | {title, year, source, venue, rank, citation_count}'
+```
+
+### Example — conference-filtered search
+```bash
+curl -s -X POST https://api.noteweave.io/research/search_papers \
+  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "diffusion models image generation",
+    "pill": "artificial_intelligence",
+    "venue": "NeurIPS",
+    "year_from": 2022
+  }' | jq '.papers[] | {title, year, venue, rank}'
 ```
 
 ### Tips
-- Set `pill` to the research domain for better provider routing (e.g. `molecular_cellular_biology` routes to PubMed, bioRxiv; `artificial_intelligence` routes to arXiv, S2)
-- Call multiple times with different queries for broader coverage
+- Set `pill` to the research domain for better provider routing
+- Use `venue` when the user asks for papers from a specific conference (NeurIPS, CVPR, ICML, ICLR, ACL, EMNLP, Nature, Science, etc.) or journal
 - Use `arxiv_id` or `pdf_url` from results as input to `fetch_paper_pdf`
+- `providers` in the response shows source distribution — useful for debugging coverage
 
 ---
 
