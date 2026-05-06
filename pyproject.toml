@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "noteweave-skills"
+version = "0.1.0"
+description = "Install Noteweave research API skills into Cursor, Claude Code, Windsurf, Zed, and other AI coding agents."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+keywords = ["noteweave", "research", "ai", "cursor", "claude", "windsurf", "skills", "mcp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# No runtime dependencies — pure stdlib + bundled templates
+dependencies = []
+
+[project.urls]
+Homepage = "https://noteweave.io"
+Repository = "https://github.com/noteweave/noteweave-skills"
+Documentation = "https://noteweave.io/docs/skills"
+
+[project.scripts]
+noteweave-skills = "noteweave_skills.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["noteweave_skills"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+# Include all template files in the package
+"noteweave_skills/templates" = "noteweave_skills/templates"
