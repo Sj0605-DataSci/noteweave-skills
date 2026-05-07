@@ -39,7 +39,7 @@ search_datasets (independent)
 
 ## POST /research/search_papers
 
-Search across arXiv, Semantic Scholar, OpenAlex, PubMed, bioRxiv, medRxiv, and 6 more providers simultaneously. Results are fusion-searched, deduplicated, and reranked.
+Search the Noteweave research index. Returns ranked, deduped papers with citation counts and venue metadata where available.
 
 ```bash
 curl -s -X POST https://api.noteweave.io/research/search_papers \
@@ -52,7 +52,7 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
     "sort": "top_cited"
   }'
 
-# Conference-filtered: S2 runs first, then other providers in parallel
+# Venue-filtered
 curl -s -X POST https://api.noteweave.io/research/search_papers \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
@@ -66,18 +66,18 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
 
 **Request fields:**
 - `query` *(required)* — free-text research query
-- `pill` — domain routing key. Options: `general`, `artificial_intelligence`, `computer_science`, `data_science`, `molecular_cellular_biology`, `systems_biology`, `neuroscience_cognition`, `cancer_oncology`, `clinical_medicine`, `mental_health`, `public_health`, `pharmacology_drug_development`, `physics`, `astronomy_astrophysics`, `chemistry`, `materials_science`, `mathematics`, `statistics`, `economics_finance`, `social_sciences`, `psychology_behavior`
+- `pill` — research domain. Options: `general`, `artificial_intelligence`, `computer_science`, `data_science`, `molecular_cellular_biology`, `systems_biology`, `neuroscience_cognition`, `cancer_oncology`, `clinical_medicine`, `mental_health`, `public_health`, `pharmacology_drug_development`, `physics`, `astronomy_astrophysics`, `chemistry`, `materials_science`, `mathematics`, `statistics`, `economics_finance`, `social_sciences`, `psychology_behavior`
 - `per_provider` — 1–50, default 10
 - `year_from` / `year_to` — integer year bounds (optional)
 - `sort` — `relevance` | `latest` | `top_cited` | `new`
-- `providers` — comma-separated whitelist e.g. `"arxiv,s2,openalex"` (optional)
-- `venue` — conference or journal name e.g. `"NeurIPS"`, `"CVPR 2023"`, `"Nature Medicine"` (optional). When set, Semantic Scholar runs first with a boosted result cap for stronger venue-biased results.
+- `providers` — comma-separated whitelist e.g. `"arxiv,s2,openalex"` (optional). Set ONLY if user named specific sources; otherwise leave empty for the default search.
+- `venue` — conference or journal name e.g. `"NeurIPS"`, `"CVPR 2023"`, `"Nature Medicine"` (optional). Filters results by venue.
 
-**Response:** `{ "papers": [{title, authors, year, abstract, arxiv_id, doi, url, pdf_url, source, citation_count, venue, rank}], "total": N, "providers": {"s2": 8, "arxiv": 5} }`
+**Response:** `{ "papers": [{title, authors, year, abstract, arxiv_id, doi, url, pdf_url, source, citation_count, venue, rank}], "total": N, "providers": {"arxiv": 8, "s2": 6} }`
 
-- `rank` — 1-based relevance rank from GPT-5-nano reranker (lower = more relevant)
-- `venue` — journal or conference name; `null` for pure arXiv preprints
-- `providers` — count of papers per source (useful to see coverage)
+- `rank` — 1-based relevance rank (lower = more relevant)
+- `venue` — journal or conference name (when known)
+- `providers` — count of papers per provider (useful to see coverage)
 
 ---
 

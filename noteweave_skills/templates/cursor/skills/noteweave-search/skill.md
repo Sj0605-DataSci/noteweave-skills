@@ -1,6 +1,6 @@
 ---
 name: noteweave-search
-description: Search academic papers across arXiv, Semantic Scholar, OpenAlex, PubMed, bioRxiv and more. Use when the user asks to find papers, search literature, look up research, find related work, explore a research topic, or find papers from a specific conference or journal.
+description: Search academic papers across the Noteweave research index. Use when the user asks to find papers, search literature, look up research, find related work, explore a research topic, or find papers from a specific conference or journal.
 ---
 
 # Noteweave Paper & Dataset Search
@@ -19,19 +19,19 @@ Base URL: `https://api.noteweave.io`
 
 **POST** `/research/search_papers`
 
-Search across 12 academic providers simultaneously. Results are fusion-searched, deduplicated, and reranked by GPT-5-nano relevance scoring.
+Search the Noteweave research index. Returns ranked, deduped papers with citation counts and venue metadata where available.
 
 ### Request body
 ```json
 {
   "query": "string (required) — free-text research query",
-  "pill": "string — domain key, default: general. Options: general, artificial_intelligence, computer_science, data_science, molecular_cellular_biology, systems_biology, neuroscience_cognition, cancer_oncology, clinical_medicine, mental_health, public_health, pharmacology_drug_development, physics, astronomy_astrophysics, chemistry, materials_science, mathematics, statistics, economics_finance, social_sciences, psychology_behavior",
+  "pill": "string — research domain. Default: general. Options: general, artificial_intelligence, computer_science, data_science, molecular_cellular_biology, systems_biology, neuroscience_cognition, cancer_oncology, clinical_medicine, mental_health, public_health, pharmacology_drug_development, physics, astronomy_astrophysics, chemistry, materials_science, mathematics, statistics, economics_finance, social_sciences, psychology_behavior",
   "per_provider": "integer 1-50, default 10",
   "year_from": "integer (optional)",
   "year_to": "integer (optional)",
   "sort": "relevance | latest | top_cited | new — default: relevance",
-  "providers": "comma-separated whitelist e.g. 'arxiv,s2,openalex' — omit for all",
-  "venue": "string (optional) — conference or journal name e.g. 'NeurIPS', 'CVPR 2023', 'Nature Medicine'. When set, Semantic Scholar runs first with a boosted result cap."
+  "providers": "comma-separated whitelist e.g. 'arxiv,s2,openalex' — omit for default search",
+  "venue": "string (optional) — conference or journal name e.g. 'NeurIPS', 'CVPR 2023', 'Nature Medicine'. Filters results by venue."
 }
 ```
 
@@ -48,19 +48,19 @@ Search across 12 academic providers simultaneously. Results are fusion-searched,
       "doi": "string or null",
       "url": "string or null",
       "pdf_url": "string or null",
-      "source": "arxiv | s2 | openalex | pubmed | biorxiv | medrxiv | ...",
+      "source": "string — provider that surfaced the paper",
       "citation_count": 0,
-      "venue": "string or null — journal or conference name (null for arXiv preprints)",
+      "venue": "string or null — journal or conference name",
       "rank": 1
     }
   ],
   "total": 42,
-  "providers": {"s2": 8, "openalex": 6, "arxiv": 5}
+  "providers": {"arxiv": 8, "s2": 6}
 }
 ```
 
-`rank` is 1-based — lower = more relevant (assigned by GPT-5-nano reranker).
-`providers` shows how many papers came from each source.
+`rank` is 1-based — lower = more relevant.
+`providers` shows how many results came from each provider.
 
 ### Example — general search
 ```bash
@@ -75,7 +75,7 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
   }' | jq '.papers[] | {title, year, source, venue, rank, citation_count}'
 ```
 
-### Example — conference-filtered search
+### Example — venue-filtered search
 ```bash
 curl -s -X POST https://api.noteweave.io/research/search_papers \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
@@ -88,11 +88,22 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
   }' | jq '.papers[] | {title, year, venue, rank}'
 ```
 
+### Example — explicit providers
+```bash
+curl -s -X POST https://api.noteweave.io/research/search_papers \
+  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "BQP oracle separation",
+    "providers": "arxiv,s2"
+  }' | jq '.papers[] | {title, source, rank}'
+```
+
 ### Tips
-- Set `pill` to the research domain for better provider routing
-- Use `venue` when the user asks for papers from a specific conference (NeurIPS, CVPR, ICML, ICLR, ACL, EMNLP, Nature, Science, etc.) or journal
+- Set `pill` to the research domain for better category routing
+- Use `venue` when the user asks for papers from a specific conference (NeurIPS, CVPR, ICML, ICLR, ACL, EMNLP, Nature, Science, etc.) or journal — much more precise than putting the venue name in the query string
+- Use `providers=` only when the user explicitly named sources ("arxiv only", "just S2"); otherwise leave empty for the default search
 - Use `arxiv_id` or `pdf_url` from results as input to `fetch_paper_pdf`
-- `providers` in the response shows source distribution — useful for debugging coverage
 
 ---
 
