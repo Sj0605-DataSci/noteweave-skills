@@ -14,36 +14,26 @@ Base URL: `https://api.noteweave.io`
 
 ---
 
+## Cache check (read first)
+
+Before calling, check whether the answer already exists on disk:
+
+- **Paper PDF / text**: if `.noteweave/papers/<slug>/paper.pdf` or `paper.txt` exists, read it instead of re-downloading or re-fetching.
+- **Analysis**: if `.noteweave/papers/<slug>/analysis.md` exists, read it instead of re-running `deep_analyze_paper`.
+- **Index lookup**: consult `.noteweave/papers/_index.json` to resolve user-mentioned titles to existing slugs.
+
+Only call the live API when cache is missing or stale.
+
+---
+
 ## How papers land in your workspace
 
 Two separate tools — use both together:
 
 | Tool | What it does | Output |
 |---|---|---|
-| `download_paper` | Streams the actual **PDF binary** to your machine | `papers/<id>.pdf` |
-| `fetch_paper_pdf` | Extracts full **text** from the PDF server-side | `papers/<id>/paper.txt` |
-
-Always save both. Standard layout:
-```
-papers/
-  2511.16825.pdf              ← from download_paper (curl -OJ)
-  2511.16825/
-    paper.txt                 ← from fetch_paper_pdf (jq -r .text)
-    analysis.md               ← from deep_analyze_paper (jq -r .review)
-instructions.md               ← from write_instructions
-```
-
----
-
-## Workflow
-
-```
-download_paper   →  papers/<id>.pdf          (actual PDF on disk)
-fetch_paper_pdf  →  papers/<id>/paper.txt    (extracted text for analysis)
-                 →  deep_analyze_paper
-                 →  papers/<id>/analysis.md
-                 →  write_instructions → instructions.md
-```
+| `download_paper` | Streams the actual **PDF binary** to your machine | `.noteweave/papers/<slug>/paper.pdf` |
+| `fetch_paper_pdf` | Extracts full **text** from the PDF server-side | `.noteweave/papers/<slug>/paper.txt` |
 
 ---
 
@@ -52,29 +42,23 @@ fetch_paper_pdf  →  papers/<id>/paper.txt    (extracted text for analysis)
 **GET** `/research/download_paper`
 
 Streams the actual PDF binary to your machine. Use `curl -OJ` — it auto-saves
-with the correct filename (e.g. `2511.16825.pdf`). Handles large papers (34 MB+).
+with the correct filename. Handles large papers (34 MB+).
 
 ### Query params (provide at least one)
-- `arxiv_id` — e.g. `2511.16825`
-- `doi` — e.g. `10.1145/3292500.3330681`
+- `arxiv_id` — e.g. `<arxiv id>`
+- `doi` — e.g. `<doi string>`
 - `pdf_url` — direct PDF URL
 - `title` — paper title (fuzzy matched)
 - `url` — landing page URL
 
 ### Example
 ```bash
-mkdir -p papers
+SLUG="<arxiv id, e.g. arxiv-1706.03762>"
+mkdir -p .noteweave/papers/$SLUG
 
-# Downloads and saves as <arxiv_id>.pdf automatically
-curl -OJ \
+cd .noteweave/papers/$SLUG && curl -OJ \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
-  "https://api.noteweave.io/research/download_paper?arxiv_id=2511.16825"
-# → saves papers/... wait, -OJ saves in CWD, so cd first:
-
-cd papers && curl -OJ \
-  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
-  "https://api.noteweave.io/research/download_paper?arxiv_id=2511.16825" && cd ..
-# → papers/2511.16825.pdf
+  "https://api.noteweave.io/research/download_paper?arxiv_id=<arxiv id>" && cd -
 ```
 
 ---
@@ -89,11 +73,11 @@ Cached server-side — repeat calls for the same paper are instant.
 ### Request body (provide at least one identifier)
 ```json
 {
-  "arxiv_id": "2307.09288",
-  "doi": "10.1145/3292500.3330681",
-  "pdf_url": "https://arxiv.org/pdf/2307.09288",
-  "title": "Attention Is All You Need",
-  "url": "https://arxiv.org/abs/2307.09288"
+  "arxiv_id": "<arxiv id>",
+  "doi": "<doi string>",
+  "pdf_url": "<direct PDF URL>",
+  "title": "<exact paper title from search_papers result>",
+  "url": "<landing page URL>"
 }
 ```
 
@@ -110,25 +94,9 @@ Cached server-side — repeat calls for the same paper are instant.
 }
 ```
 
-### Full example — fetch + save to workspace
-```bash
-SLUG="1706.03762"
-mkdir -p papers/$SLUG
-
-# Fetch and save text locally
-curl -s -X POST https://api.noteweave.io/research/fetch_paper_pdf \
-  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"arxiv_id\": \"$SLUG\"}" \
-  | tee /tmp/nw_fetch.json \
-  | jq -r '.text' > papers/$SLUG/paper.txt
-
-echo "Saved $(wc -c < papers/$SLUG/paper.txt) chars to papers/$SLUG/paper.txt"
-```
-
 ---
 
-## Tool 2 — deep_analyze_paper
+## Tool 3 — deep_analyze_paper
 
 **POST** `/research/deep_analyze_paper`
 
@@ -139,9 +107,9 @@ reviewer for AI papers, biologist for biology, clinician for medicine).
 ```json
 {
   "text": "string (required, min 100 chars) — full paper text from fetch_paper_pdf",
-  "title": "string — paper title",
+  "title": "<exact paper title from search_papers result>",
   "domain": "auto",
-  "pill": "artificial_intelligence"
+  "pill": "<domain pill, e.g. artificial_intelligence>"
 }
 ```
 
@@ -155,66 +123,48 @@ reviewer for AI papers, biologist for biology, clinician for medicine).
 }
 ```
 
-### Full example — analyze + save review to workspace
+### End-to-end example — fetch + analyze + save
 ```bash
-SLUG="1706.03762"
-TEXT=$(cat papers/$SLUG/paper.txt)
-
-curl -s -X POST https://api.noteweave.io/research/deep_analyze_paper \
-  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"text\": $(echo "$TEXT" | jq -Rs .),
-    \"title\": \"Attention Is All You Need\",
-    \"pill\": \"artificial_intelligence\"
-  }" \
-  | jq -r '.review' > papers/$SLUG/analysis.md
-
-echo "Analysis saved to papers/$SLUG/analysis.md"
-```
-
-### Combined one-shot: fetch + analyze + save both
-```bash
-SLUG="2511.16825"
-TITLE="WorldGen: From Text to Traversable and Interactive 3D Worlds"
-mkdir -p papers/$SLUG
+SLUG="<arxiv id, e.g. arxiv-1706.03762>"
+TITLE="<exact paper title from search_papers result>"
+mkdir -p .noteweave/papers/$SLUG
 
 # Step 1: fetch text → save locally
 curl -s -X POST https://api.noteweave.io/research/fetch_paper_pdf \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"arxiv_id\": \"$SLUG\", \"title\": \"$TITLE\"}" \
-  | jq -r '.text' > papers/$SLUG/paper.txt
+  | jq -r '.text' > .noteweave/papers/$SLUG/paper.txt
 
 # Step 2: analyze from saved text → save review
 curl -s -X POST https://api.noteweave.io/research/deep_analyze_paper \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"text\": $(cat papers/$SLUG/paper.txt | jq -Rs .),
+    \"text\": $(cat .noteweave/papers/$SLUG/paper.txt | jq -Rs .),
     \"title\": \"$TITLE\",
-    \"pill\": \"artificial_intelligence\"
+    \"pill\": \"<domain pill — see noteweave-search for full list>\"
   }" \
-  | jq -r '.review' > papers/$SLUG/analysis.md
+  | jq -r '.review' > .noteweave/papers/$SLUG/analysis.md
 ```
 
 ---
 
-## Tool 3 — deep_analyze_batch
+## Tool 4 — deep_analyze_batch
 
 **POST** `/research/deep_analyze_batch`
 
 Analyze up to 10 papers concurrently. Much faster than sequential calls.
-Save each review to `papers/<slug>/analysis.md` after the call.
+Save each review to `.noteweave/papers/<slug>/analysis.md` after the call.
 
 ### Request body
 ```json
 {
   "papers": [
     {
-      "title": "string (required)",
+      "title": "<exact paper title>",
       "text": "string (required, min 100 chars) — contents of paper.txt",
-      "pill": "artificial_intelligence",
+      "pill": "<domain pill>",
       "domain": "auto"
     }
   ]
@@ -234,6 +184,25 @@ Save each review to `papers/<slug>/analysis.md` after the call.
   "total": 3
 }
 ```
+
+---
+
+## Persistence
+
+After `download_paper`: save to `.noteweave/papers/<slug>/paper.pdf`.
+
+After `fetch_paper_pdf`:
+1. Save extracted text to `.noteweave/papers/<slug>/paper.txt`.
+2. Write `.noteweave/papers/<slug>/metadata.json` with the response's `title`, `arxiv_id`, `doi`, `pdf_url`, `chars`, plus `added_at` (ISO timestamp).
+3. Update `.noteweave/papers/_index.json` to add this slug.
+
+After `deep_analyze_paper`:
+1. Save the review to `.noteweave/papers/<slug>/analysis.md`.
+2. Update the slug's entry in `.noteweave/papers/_index.json` with `{analyzed_at: <ISO timestamp>}`.
+
+After `deep_analyze_batch`: same as `deep_analyze_paper`, applied per-paper in the response.
+
+This means future runs can answer "what do I have on <topic>" by reading `.noteweave/papers/_index.json` instead of re-searching.
 
 ---
 

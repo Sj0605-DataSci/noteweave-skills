@@ -15,6 +15,18 @@ Base URL: `https://api.noteweave.io`
 
 ---
 
+## Cache check (read first)
+
+Before calling, check whether the answer already exists on disk:
+
+- **Search**: if `.noteweave/searches/<query-slug>.json` exists and is < 7 days old, prefer the cached response.
+- **Paper lookup**: if `.noteweave/papers/_index.json` already lists papers matching the user's intent, surface those before issuing a fresh search.
+- **Datasets**: if the dataset is already in `.noteweave/datasets/_index.json`, use the cached entry.
+
+Only call the live API when cache is missing or stale.
+
+---
+
 ## Tool 1 — search_papers
 
 **POST** `/research/search_papers`
@@ -62,48 +74,26 @@ Search the Noteweave research index. Returns ranked, deduped papers with citatio
 `rank` is 1-based — lower = more relevant.
 `providers` shows how many results came from each provider.
 
-### Example — general search
+### Example
 ```bash
 curl -s -X POST https://api.noteweave.io/research/search_papers \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "vision transformers image classification",
-    "pill": "artificial_intelligence",
+    "query": "<your research query>",
+    "pill": "<domain pill — see options above>",
     "per_provider": 10,
     "sort": "top_cited"
   }' | jq '.papers[] | {title, year, source, venue, rank, citation_count}'
 ```
 
-### Example — venue-filtered search
-```bash
-curl -s -X POST https://api.noteweave.io/research/search_papers \
-  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "diffusion models image generation",
-    "pill": "artificial_intelligence",
-    "venue": "NeurIPS",
-    "year_from": 2022
-  }' | jq '.papers[] | {title, year, venue, rank}'
-```
-
-### Example — explicit providers
-```bash
-curl -s -X POST https://api.noteweave.io/research/search_papers \
-  -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "BQP oracle separation",
-    "providers": "arxiv,s2"
-  }' | jq '.papers[] | {title, source, rank}'
-```
+See the Tips section for `venue` and `providers` options.
 
 ### Tips
-- Set `pill` to the research domain for better category routing
-- Use `venue` when the user asks for papers from a specific conference (NeurIPS, CVPR, ICML, ICLR, ACL, EMNLP, Nature, Science, etc.) or journal — much more precise than putting the venue name in the query string
-- Use `providers=` only when the user explicitly named sources ("arxiv only", "just S2"); otherwise leave empty for the default search
-- Use `arxiv_id` or `pdf_url` from results as input to `fetch_paper_pdf`
+- Set `pill` to the research domain for better category routing.
+- Use `venue` when the user asks for papers from a specific conference (NeurIPS, CVPR, ICML, ICLR, ACL, EMNLP, Nature, Science, etc.) or journal — much more precise than putting the venue name in the query string. Example value: `"venue": "<conference or journal name, e.g. NeurIPS, CVPR, Nature>"`.
+- Use `providers=` only when the user explicitly named sources ("arxiv only", "just S2"); otherwise leave empty for the default search.
+- Use `arxiv_id` or `pdf_url` from results as input to `fetch_paper_pdf`.
 
 ---
 
@@ -141,8 +131,23 @@ Search HuggingFace and Kaggle for ML datasets.
 curl -s -X POST https://api.noteweave.io/research/search_datasets \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"query": "medical image segmentation CT scan"}' | jq '.datasets[]'
+  -d '{"query": "<dataset search query>"}' | jq '.datasets[]'
 ```
+
+---
+
+## Persistence
+
+After a successful `search_papers` call:
+
+1. Hash the query+filters into a slug: `<query-slug>` = lowercase, alphanumerics + hyphens, max 80 chars.
+2. Write the full JSON response to `.noteweave/searches/<query-slug>.json`.
+3. For each paper in the response, append/update a record in `.noteweave/papers/_index.json` (key: slug; value: `{title, authors, year, added_at, arxiv_id, doi, source}`).
+4. Do NOT yet write `.noteweave/papers/<slug>/metadata.json` for each — that happens lazily when the user asks to analyze a specific paper.
+
+After a successful `search_datasets` call:
+
+1. Append/update each dataset in `.noteweave/datasets/_index.json` with `{source, title, url, snippet, added_at}`.
 
 ---
 

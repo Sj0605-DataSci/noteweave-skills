@@ -14,15 +14,14 @@ Base URL: `https://api.noteweave.io`
 
 ---
 
-## Full workflow to get instructions.md
+## Cache check (read first)
 
-```
-1. search_papers       → find relevant papers
-2. fetch_paper_pdf     → get text for each paper
-3. deep_analyze_paper  → get E3 review for each paper
-4. write_instructions  → synthesize into experimental plan
-5. save to instructions.md in workspace
-```
+Before calling, check whether the answer already exists on disk:
+
+- If `.noteweave/instructions.md` exists for the same brief (compare against `.noteweave/brief.json`), reuse it instead of re-generating.
+- If individual papers have not yet been analyzed (`.noteweave/papers/<slug>/analysis.md` missing), run `noteweave-analyze` first — `write_instructions` requires at least one paper with populated `analysis_text`.
+
+Only call the live API when cache is missing or the brief has changed.
 
 ---
 
@@ -30,22 +29,22 @@ Base URL: `https://api.noteweave.io`
 
 **POST** `/research/write_instructions`
 
-Synthesizes E3 paper reviews + your research brief into a step-by-step experimental plan. Returns Markdown — save it to `instructions.md` in your workspace.
+Synthesizes E3 paper reviews + your research brief into a step-by-step experimental plan. Returns Markdown — save it to `.noteweave/instructions.md` in your workspace.
 
 ### Request body
 ```json
 {
   "brief": {
-    "system_description": "string (required) — what system you're building or improving",
-    "primary_metric": "string — metric to optimise, e.g. 'F1 score', 'mAP', 'perplexity'",
-    "current_value": 0.0,
-    "target_value": 0.0,
-    "dataset": "string — dataset name",
-    "tried_so_far": "string — approaches already attempted",
-    "prior_results": "string — results from prior attempts",
-    "hardware": "1x A100 GPU",
-    "timeline_days": 14,
-    "failure_condition": "No improvement after 3 runs",
+    "system_description": "<one-sentence description of the system being built>",
+    "primary_metric": "<metric being optimized>",
+    "current_value": "<current number>",
+    "target_value": "<target number>",
+    "dataset": "<dataset name>",
+    "tried_so_far": "<approaches already attempted>",
+    "prior_results": "<results from prior attempts>",
+    "hardware": "<hardware spec>",
+    "timeline_days": "<integer days>",
+    "failure_condition": "<when to stop>",
     "current_method": "string (optional)",
     "current_library": "string (optional)",
     "domain": "string (optional)",
@@ -53,7 +52,7 @@ Synthesizes E3 paper reviews + your research brief into a step-by-step experimen
   },
   "papers": [
     {
-      "title": "string (required)",
+      "title": "<exact paper title>",
       "analysis_text": "string (required for at least one paper) — review from deep_analyze_paper",
       "abstract": "string (optional)",
       "authors": ["string"],
@@ -82,24 +81,35 @@ curl -s -X POST https://api.noteweave.io/research/write_instructions \
   -H "Content-Type: application/json" \
   -d '{
     "brief": {
-      "system_description": "Image segmentation model for medical CT scans",
-      "primary_metric": "Dice score",
-      "current_value": 0.72,
-      "target_value": 0.82,
-      "dataset": "BTCV",
-      "tried_so_far": "UNet baseline, basic augmentation",
-      "hardware": "2x A100 GPUs",
+      "system_description": "<one-sentence description of the system being built>",
+      "primary_metric": "<metric being optimized>",
+      "current_value": <current number>,
+      "target_value": <target number>,
+      "dataset": "<dataset name>",
+      "tried_so_far": "<approaches already attempted>",
+      "hardware": "<hardware spec>",
       "timeline_days": 14
     },
     "papers": [
       {
-        "title": "Swin-UNet",
+        "title": "<exact paper title from search_papers result>",
         "analysis_text": "... (from deep_analyze_paper) ...",
-        "arxiv_id": "2105.05537"
+        "arxiv_id": "<arxiv id>"
       }
     ]
-  }' | jq -r '.instructions_md' > instructions.md
+  }' | jq -r '.instructions_md' > .noteweave/instructions.md
 ```
+
+---
+
+## Persistence
+
+After `write_instructions`:
+
+1. Save the returned Markdown to `.noteweave/instructions.md` (overwrites any prior plan; the user can `git diff` to see what changed).
+2. Optionally archive the previous version to `.noteweave/instructions.<timestamp>.md` if it exists, so the user can compare iterations.
+
+The brief itself (the JSON payload) should be saved to `.noteweave/brief.json` so subsequent calls can re-use it without the user re-stating their goal.
 
 ---
 

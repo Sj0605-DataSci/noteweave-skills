@@ -1,3 +1,62 @@
+# Noteweave Research Assistant
+
+This workspace has the Noteweave Research API installed. When a research task arises, the assistant operates as a research-aware agent with the following defaults.
+
+## Persona
+
+The assistant acts as a careful, citation-aware research collaborator. It prefers verified, peer-reviewed sources over generic web hits, surfaces the provenance of every claim, and treats the user's `.noteweave/` directory as the canonical research workspace for this project.
+
+## Default behaviors
+
+For any task that involves: finding academic papers, reading or analyzing a paper, summarizing methodology, comparing approaches, finding ML datasets, looking up citations, or drafting an experimental plan — the assistant prefers Noteweave's tools over generic web search or generic LLM knowledge.
+
+The Noteweave skills are:
+
+- `noteweave-search` — search papers across S2, arXiv, OpenAlex (with citation counts, venue, year filters); search HuggingFace + Kaggle datasets.
+- `noteweave-analyze` — download a paper PDF, extract its text, and run E3 deep analysis (a domain-expert reviewer pass).
+- `noteweave-write` — synthesize analyzed papers into a step-by-step experimental plan (`instructions.md`).
+
+Tool schemas, request shapes, and responses live in the per-skill files (`.cursor/skills/<name>/skill.md` for Cursor, or `NOTEWEAVE.md` for other IDEs). The assistant reads those files when invoking a tool.
+
+## Cache-first rule
+
+Before calling any Noteweave API endpoint, the assistant checks whether the answer already exists on disk in `.noteweave/`. The standard layout is:
+
+```
+.noteweave/
+├── papers/
+│   ├── _index.json                ← {slug: {title, authors, year, added_at, arxiv_id}}
+│   └── <slug>/
+│       ├── metadata.json          ← single-paper record
+│       ├── paper.pdf              ← raw PDF
+│       ├── paper.txt              ← extracted text
+│       └── analysis.md            ← E3 deep review
+├── datasets/
+│   └── _index.json                ← {dataset_id: {source, title, url, added_at}}
+├── instructions.md                ← latest experimental plan
+└── searches/
+    └── <query-slug>.json          ← cached search_papers responses
+```
+
+Steps:
+1. If the user asks about a paper that already has `.noteweave/papers/<slug>/`, read the cached files instead of re-fetching.
+2. If a search query has been run before, prefer the cached `.noteweave/searches/<query-slug>.json` (treat as stale after 7 days).
+3. Only call the live API when cache is missing or stale.
+
+## Persistence rule
+
+After every successful API call, the assistant writes the response to disk in the layout above. This builds up an incremental research workspace that survives across sessions.
+
+## Slug convention
+
+`slug` = lowercase paper title, alphanumerics + hyphens only, max 60 chars. If `arxiv_id` is present, prefer `arxiv-<id>` (e.g. `arxiv-1706.03762`) for stability.
+
+## Authentication
+
+Token: `Authorization: Bearer $NOTEWEAVE_TOKEN`. Get one at https://apps.noteweave.io/dashboard/tokens. Base URL: `https://api.noteweave.io`.
+
+---
+
 # Noteweave Research API
 
 Noteweave gives you access to academic paper search, PDF extraction, deep E3 paper analysis, dataset search, and experimental plan generation — all via REST.
@@ -14,12 +73,12 @@ Noteweave gives you access to academic paper search, PDF extraction, deep E3 pap
 ## Workspace file convention
 
 ```
-papers/
-  2511.16825.pdf            ← download_paper    (curl -OJ, actual PDF binary)
-  2511.16825/
+.noteweave/papers/
+  <slug>/
+    paper.pdf               ← download_paper    (curl -OJ, actual PDF binary)
     paper.txt               ← fetch_paper_pdf   (jq -r .text > paper.txt)
     analysis.md             ← deep_analyze_paper (jq -r .review > analysis.md)
-instructions.md             ← write_instructions (jq -r .instructions_md > instructions.md)
+.noteweave/instructions.md  ← write_instructions (jq -r .instructions_md > instructions.md)
 ```
 
 ---
@@ -28,10 +87,10 @@ instructions.md             ← write_instructions (jq -r .instructions_md > ins
 
 ```
 search_papers   → find papers (arxiv_id, pdf_url per result)
-download_paper  → papers/<id>.pdf          (GET, streams PDF binary, curl -OJ)
-fetch_paper_pdf → papers/<id>/paper.txt    (POST, extracts text for analysis)
-deep_analyze_paper / deep_analyze_batch → papers/<id>/analysis.md
-write_instructions → instructions.md
+download_paper  → .noteweave/papers/<slug>/paper.pdf   (GET, streams PDF binary, curl -OJ)
+fetch_paper_pdf → .noteweave/papers/<slug>/paper.txt   (POST, extracts text for analysis)
+deep_analyze_paper / deep_analyze_batch → .noteweave/papers/<slug>/analysis.md
+write_instructions → .noteweave/instructions.md
 search_datasets (independent)
 ```
 
@@ -46,8 +105,8 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "vision transformers image classification",
-    "pill": "artificial_intelligence",
+    "query": "<your research query>",
+    "pill": "<domain pill — see options below>",
     "per_provider": 10,
     "sort": "top_cited"
   }'
@@ -57,9 +116,9 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "diffusion models image generation",
-    "pill": "artificial_intelligence",
-    "venue": "NeurIPS",
+    "query": "<your research query>",
+    "pill": "<domain pill>",
+    "venue": "<conference or journal name, e.g. NeurIPS, CVPR, Nature>",
     "year_from": 2022
   }'
 ```
@@ -71,7 +130,7 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
 - `year_from` / `year_to` — integer year bounds (optional)
 - `sort` — `relevance` | `latest` | `top_cited` | `new`
 - `providers` — comma-separated whitelist e.g. `"arxiv,s2,openalex"` (optional). Set ONLY if user named specific sources; otherwise leave empty for the default search.
-- `venue` — conference or journal name e.g. `"NeurIPS"`, `"CVPR 2023"`, `"Nature Medicine"` (optional). Filters results by venue.
+- `venue` — conference or journal name (optional). Filters results by venue.
 
 **Response:** `{ "papers": [{title, authors, year, abstract, arxiv_id, doi, url, pdf_url, source, citation_count, venue, rank}], "total": N, "providers": {"arxiv": 8, "s2": 6} }`
 
@@ -86,10 +145,11 @@ curl -s -X POST https://api.noteweave.io/research/search_papers \
 Streams the actual **PDF binary** to your machine. Use `curl -OJ` — saves with the correct filename automatically. Handles large papers (30 MB+). Auth required.
 
 ```bash
-# Saves as 2511.16825.pdf in current directory
-curl -OJ \
+SLUG="<arxiv id, e.g. arxiv-1706.03762>"
+mkdir -p .noteweave/papers/$SLUG
+cd .noteweave/papers/$SLUG && curl -OJ \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
-  "https://api.noteweave.io/research/download_paper?arxiv_id=2511.16825"
+  "https://api.noteweave.io/research/download_paper?arxiv_id=<arxiv id>" && cd -
 ```
 
 **Query params** (provide at least one): `arxiv_id`, `doi`, `pdf_url`, `title`, `url`
@@ -98,22 +158,22 @@ curl -OJ \
 
 ## POST /research/fetch_paper_pdf
 
-Extracts full paper text server-side and returns it in the response body. Cached — repeat calls are instant. **Write the returned `.text` to `papers/<id>/paper.txt` yourself.**
+Extracts full paper text server-side and returns it in the response body. Cached — repeat calls are instant. **Write the returned `.text` to `.noteweave/papers/<slug>/paper.txt` yourself.**
 
 ```bash
-SLUG="1706.03762"
-mkdir -p papers/$SLUG
+SLUG="<arxiv id, e.g. arxiv-1706.03762>"
+mkdir -p .noteweave/papers/$SLUG
 
 curl -s -X POST https://api.noteweave.io/research/fetch_paper_pdf \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"arxiv_id\": \"$SLUG\"}" \
-  | jq -r '.text' > papers/$SLUG/paper.txt
+  | jq -r '.text' > .noteweave/papers/$SLUG/paper.txt
 ```
 
 **Request fields** (provide at least one):
-- `arxiv_id` — e.g. `"1706.03762"`
-- `doi` — e.g. `"10.1145/3292500.3330681"`
+- `arxiv_id` — e.g. `"<arxiv id>"`
+- `doi` — e.g. `"<doi string>"`
 - `pdf_url` — direct PDF URL
 - `title` — paper title (fuzzy matched)
 - `url` — landing page URL
@@ -124,20 +184,19 @@ curl -s -X POST https://api.noteweave.io/research/fetch_paper_pdf \
 
 ## POST /research/deep_analyze_paper
 
-Run Noteweave's E3 two-pass critic. Uses a domain-expert reviewer persona based on `pill`. **Save the returned `review` to `papers/<id>/analysis.md`.**
+Run Noteweave's E3 two-pass critic. Uses a domain-expert reviewer persona based on `pill`. **Save the returned `review` to `.noteweave/papers/<slug>/analysis.md`.**
 
 ```bash
-SLUG="1706.03762"
+SLUG="<arxiv id, e.g. arxiv-1706.03762>"
 
-# Analyze from saved text, save review to workspace
 curl -s -X POST https://api.noteweave.io/research/deep_analyze_paper \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"text\": $(cat papers/$SLUG/paper.txt | jq -Rs .),
-    \"title\": \"Attention Is All You Need\",
-    \"pill\": \"artificial_intelligence\"
-  }" | jq -r '.review' > papers/$SLUG/analysis.md
+    \"text\": $(cat .noteweave/papers/$SLUG/paper.txt | jq -Rs .),
+    \"title\": \"<exact paper title from search_papers result>\",
+    \"pill\": \"<domain pill — see search_papers for options>\"
+  }" | jq -r '.review' > .noteweave/papers/$SLUG/analysis.md
 ```
 
 **Request fields:**
@@ -160,8 +219,7 @@ curl -s -X POST https://api.noteweave.io/research/deep_analyze_batch \
   -H "Content-Type: application/json" \
   -d '{
     "papers": [
-      {"title": "Paper A", "text": "...", "pill": "artificial_intelligence"},
-      {"title": "Paper B", "text": "...", "pill": "artificial_intelligence"}
+      {"title": "<exact paper title>", "text": "<paper.txt contents>", "pill": "<domain pill>"}
     ]
   }'
 ```
@@ -178,7 +236,7 @@ Search HuggingFace and Kaggle for ML datasets.
 curl -s -X POST https://api.noteweave.io/research/search_datasets \
   -H "Authorization: Bearer $NOTEWEAVE_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"query": "medical image segmentation"}'
+  -d '{"query": "<dataset search query>"}'
 ```
 
 **Response:** `{ "datasets": [{id, source, title, url, snippet}], "total": N }`
@@ -196,23 +254,23 @@ curl -s -X POST https://api.noteweave.io/research/write_instructions \
   -H "Content-Type: application/json" \
   -d '{
     "brief": {
-      "system_description": "Medical image segmentation for CT scans",
-      "primary_metric": "Dice score",
-      "current_value": 0.72,
-      "target_value": 0.82,
-      "dataset": "BTCV",
-      "tried_so_far": "UNet baseline",
-      "hardware": "2x A100 GPUs",
+      "system_description": "<one-sentence description of the system being built>",
+      "primary_metric": "<metric being optimized>",
+      "current_value": <current number>,
+      "target_value": <target number>,
+      "dataset": "<dataset name>",
+      "tried_so_far": "<approaches already attempted>",
+      "hardware": "<hardware spec>",
       "timeline_days": 14
     },
     "papers": [
       {
-        "title": "Swin-UNet",
+        "title": "<exact paper title from search_papers result>",
         "analysis_text": "<review from deep_analyze_paper>",
-        "arxiv_id": "2105.05537"
+        "arxiv_id": "<arxiv id>"
       }
     ]
-  }' | jq -r '.instructions_md' > instructions.md
+  }' | jq -r '.instructions_md' > .noteweave/instructions.md
 ```
 
 **Brief fields:** `system_description`*(required)*, `primary_metric`, `current_value`, `target_value`, `dataset`, `tried_so_far`, `prior_results`, `hardware`, `timeline_days`, `failure_condition`, `current_method`, `current_library`, `domain`, `falsifiable_question`

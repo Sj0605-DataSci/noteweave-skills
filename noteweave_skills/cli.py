@@ -81,6 +81,14 @@ def _install_cursor(project_root: Path) -> None:
         shutil.copy2(skill_dir / "skill.md", dest / "skill.md")
         print(f"  {_green('✓')} {dest.relative_to(project_root)}/skill.md")
 
+    # Drop the always-on rules file (persona + cache-first behavior)
+    rules_src = TEMPLATES / "shared" / "NOTEWEAVE_RULES.md"
+    rules_dest_dir = project_root / ".cursor" / "rules"
+    rules_dest_dir.mkdir(parents=True, exist_ok=True)
+    rules_dest = rules_dest_dir / "noteweave.mdc"
+    shutil.copy2(rules_src, rules_dest)
+    print(f"  {_green('✓')} .cursor/rules/noteweave.mdc")
+
     print()
     print(_bold("Skills installed for Cursor."))
     print("They appear as /noteweave-search, /noteweave-analyze, /noteweave-write")
@@ -116,6 +124,7 @@ def _install_claude_code(project_root: Path) -> None:
 
     print()
     print(_bold("Skills installed for Claude Code."))
+    print("  Rules + persona embedded in NOTEWEAVE.md (top section).")
 
 
 def _install_windsurf(project_root: Path) -> None:
@@ -147,6 +156,7 @@ def _install_windsurf(project_root: Path) -> None:
     print()
     print(_bold("Skills installed for Windsurf."))
     print("Windsurf will now include the Noteweave API context in every session.")
+    print("  Rules + persona embedded in NOTEWEAVE.md (top section).")
 
 
 def _install_zed(project_root: Path) -> None:
@@ -185,6 +195,7 @@ def _install_zed(project_root: Path) -> None:
     print()
     print(_bold("Skills installed for Zed."))
     print("Zed's AI assistant will now be aware of the Noteweave API.")
+    print("  Rules + persona embedded in NOTEWEAVE.md (top section).")
 
 
 def _install_other(project_root: Path) -> None:
@@ -195,6 +206,7 @@ def _install_other(project_root: Path) -> None:
     print()
     print(_bold("NOTEWEAVE.md dropped in project root."))
     print("Add it to your IDE's context/rules file to activate.")
+    print("  Rules + persona embedded in NOTEWEAVE.md (top section).")
 
 
 _INSTALLERS = {
